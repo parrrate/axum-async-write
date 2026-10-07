@@ -20,6 +20,7 @@ impl AsyncWrite for AxumWrite {
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<std::io::Result<usize>> {
+        tracing::info!("poll_write");
         self.send.sender().send(Bytes::copy_from_slice(buf)).ok();
         let _ = (&mut self, cx);
         // core::task::ready!(Pin::new(&mut self.send).poll_ready(cx))
