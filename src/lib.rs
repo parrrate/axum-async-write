@@ -20,14 +20,11 @@ impl AsyncWrite for AxumWrite {
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<std::io::Result<usize>> {
-        tracing::info!("poll_write");
-        self.send.sender().send(Bytes::copy_from_slice(buf)).ok();
-        let _ = (&mut self, cx);
-        // core::task::ready!(Pin::new(&mut self.send).poll_ready(cx))
-        //     .map_err(|error| std::io::Error::new(std::io::ErrorKind::BrokenPipe, error))?;
-        // Pin::new(&mut self.send)
-        //     .start_send(Bytes::copy_from_slice(buf))
-        //     .map_err(|error| std::io::Error::new(std::io::ErrorKind::BrokenPipe, error))?;
+        core::task::ready!(Pin::new(&mut self.send).poll_ready(cx))
+            .map_err(|error| std::io::Error::new(std::io::ErrorKind::BrokenPipe, error))?;
+        Pin::new(&mut self.send)
+            .start_send(Bytes::copy_from_slice(buf))
+            .map_err(|error| std::io::Error::new(std::io::ErrorKind::BrokenPipe, error))?;
         Poll::Ready(Ok(buf.len()))
     }
 
@@ -47,7 +44,7 @@ impl AsyncWrite for AxumWrite {
 pub fn with_write<F: 'static + Send + Future<Output = std::io::Result<()>>>(
     f: impl 'static + Send + FnOnce(AxumWrite) -> F,
 ) -> Body {
-    let (send, recv) = flume::unbounded::<Bytes>();
+    let (send, recv) = flume::bounded::<Bytes>(1000);
     Body::from_stream(try_stream(async move |co| {
         let executor = Executor::new();
         let task = executor.spawn(async {
@@ -59,11 +56,8 @@ pub fn with_write<F: 'static + Send + Future<Output = std::io::Result<()>>>(
         executor
             .run(async {
                 while let Ok(bytes) = recv.recv_async().await {
-                    tracing::info!("chunk len: {}", bytes.len());
                     co.yield_(bytes).await;
-                    tracing::info!("yielded");
                 }
-                tracing::info!("chunks ended");
                 task.await
             })
             .await
