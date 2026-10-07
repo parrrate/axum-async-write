@@ -3,9 +3,9 @@ use std::{
     task::{Context, Poll},
 };
 
+use async_executor::Executor;
 use axum::body::{Body, Bytes};
 use flume::r#async::SendSink;
-use futures_concurrency::future::TryJoin;
 use futures_io::AsyncWrite;
 use futures_sink::Sink;
 use genawaiter_try_stream::try_stream;
@@ -49,25 +49,23 @@ pub fn with_write<F: 'static + Send + Future<Output = std::io::Result<()>>>(
 ) -> Body {
     let (send, recv) = flume::unbounded::<Bytes>();
     Body::from_stream(try_stream(async move |co| {
-        (
-            async {
+        let executor = Executor::new();
+        let task = executor.spawn(async {
+            f(AxumWrite {
+                send: send.into_sink(),
+            })
+            .await
+        });
+        executor
+            .run(async {
                 while let Ok(bytes) = recv.recv_async().await {
                     tracing::info!("chunk len: {}", bytes.len());
                     co.yield_(bytes).await;
                     tracing::info!("yielded");
                 }
                 tracing::info!("chunks ended");
-                Ok(())
-            },
-            async {
-                f(AxumWrite {
-                    send: send.into_sink(),
-                })
-                .await
-            },
-        )
-            .try_join()
-            .await?;
-        std::io::Result::Ok(())
+                task.await
+            })
+            .await
     }))
 }
