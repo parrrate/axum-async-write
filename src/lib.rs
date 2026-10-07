@@ -54,6 +54,7 @@ pub fn with_write<F: 'static + Send + Future<Output = std::io::Result<()>>>(
                 while let Ok(bytes) = recv.recv_async().await {
                     tracing::info!("chunk len: {}", bytes.len());
                     co.yield_(bytes).await;
+                    tracing::info!("yielded");
                 }
                 tracing::info!("chunks ended");
                 Ok(())
