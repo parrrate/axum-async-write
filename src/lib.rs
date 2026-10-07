@@ -44,7 +44,7 @@ impl AsyncWrite for AxumWrite {
 pub fn with_write<F: 'static + Send + Future<Output = std::io::Result<()>>>(
     f: impl 'static + Send + FnOnce(AxumWrite) -> F,
 ) -> Body {
-    let (send, recv) = flume::bounded::<Bytes>(10);
+    let (send, recv) = flume::unbounded::<Bytes>();
     Body::from_stream(try_stream(async move |co| {
         (
             async {
