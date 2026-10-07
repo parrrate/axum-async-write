@@ -1,6 +1,6 @@
 use std::{
     pin::Pin,
-    task::{Context, Poll, ready},
+    task::{Context, Poll},
 };
 
 use axum::body::{Body, Bytes};
@@ -20,11 +20,13 @@ impl AsyncWrite for AxumWrite {
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<std::io::Result<usize>> {
-        ready!(Pin::new(&mut self.send).poll_ready(cx))
-            .map_err(|error| std::io::Error::new(std::io::ErrorKind::BrokenPipe, error))?;
-        Pin::new(&mut self.send)
-            .start_send(Bytes::copy_from_slice(buf))
-            .map_err(|error| std::io::Error::new(std::io::ErrorKind::BrokenPipe, error))?;
+        self.send.sender().send(Bytes::copy_from_slice(buf)).ok();
+        let _ = (&mut self, cx);
+        // core::task::ready!(Pin::new(&mut self.send).poll_ready(cx))
+        //     .map_err(|error| std::io::Error::new(std::io::ErrorKind::BrokenPipe, error))?;
+        // Pin::new(&mut self.send)
+        //     .start_send(Bytes::copy_from_slice(buf))
+        //     .map_err(|error| std::io::Error::new(std::io::ErrorKind::BrokenPipe, error))?;
         Poll::Ready(Ok(buf.len()))
     }
 
