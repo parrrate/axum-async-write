@@ -44,13 +44,15 @@ impl AsyncWrite for AxumWrite {
 pub fn with_write<F: 'static + Send + Future<Output = std::io::Result<()>>>(
     f: impl 'static + Send + FnOnce(AxumWrite) -> F,
 ) -> Body {
-    let (send, recv) = flume::bounded(10);
+    let (send, recv) = flume::bounded::<Bytes>(10);
     Body::from_stream(try_stream(async move |co| {
         (
             async {
                 while let Ok(bytes) = recv.recv_async().await {
+                    tracing::info!("chunk len: {}", bytes.len());
                     co.yield_(bytes).await;
                 }
+                tracing::info!("chunks ended");
                 Ok(())
             },
             async {
